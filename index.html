@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <script src="d3.js"></script>
+        <meta name="viewport" content="initial-scale=1.0, width=device-width" /> 
+        <script src="topojson.v1.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-legend/2.25.6/d3-legend.min.js"></script>
+        <style>
+            @media screen and (min-width: 480px) {
+                p, footer{
+                    margin: 10px auto;
+                    width: 80%
+                }
+            }
+            @media screen and (min-width: 1200px) and (orientation: landscape) {
+                p, footer{
+                    width: 50%
+                }
+            }
+            body, a{
+                color: #3a3a3a;
+                font-family: Helvetica,Arial,sans-serif;
+            }
+            h1, h2, h3, #menu, #tip {
+                text-align: center;
+            }
+            #map-container {
+                width: 100%;
+            }
+            #tooltip {
+                border: solid 1px black;
+                padding: 10px;
+                display: none;
+                background-color: white;
+                position: absolute;
+            }
+            #tooltip{
+                padding: 5px;
+                border-radius: 3px;
+            }
+            #text-box{
+                visibility: hidden;
+            }
+            .legendTitle{
+                font-size: 1.1rem;
+            }
+            .label{
+                font-size: 0.9rem;
+            }
+            .toggle-btns{
+                color: white;
+                background: #31703f;
+                padding: 8px;
+                border-radius: 5px;
+                border-width: 0;
+                font-weight: 700;
+                margin: 10px 2px;
+                cursor: pointer;
+            }
+            #btn2011{
+                opacity: 1;
+            }
+            #btn2019{
+                opacity: 0.5;
+            }
+
+        </style>
+    </head>
+    <body>
+       <h1>The land of empty houses</h1>
+       <h2>+52% of unoccupied dwellings in Italy from 2011 and 2019</h2>
+        <p>Empty houses were 7 million in 2011 and they surpassed the 11.2 units in 2019 (last available data). 
+            Rome and Turin are the provinces with most unoccupied houses, with over 350 thousand dwellings with no one inside.
+        </p>
+        <div id="tip"><i>Click on the provinces to see more information</i></div>
+        <div id="menu"></div>
+        <svg id="map-container" width=600 height=550 viewBox="0 0 500 600" preserveAspectratio="xMidYMin"
+            alt="The map shows the increase of unoccupied houses in Italy from 2011 to 2019.
+            Empty houses  were 7 million in 2011 and they surpassed the 11.2 units in 2019 (last available data). 
+            Rome and Turin are the provinces with most unoccupied houses, with over 350 thousand dwellings with no one inside."
+        >
+          <g id="body"></g>
+        </svg>
+        <h3 id="text-box">Hidden placeholder</h3>
+        <div id="tooltip">
+        </div>
+        <footer>
+            <span id="source">
+                Source: 
+                Istat
+                <a href="http://dati-censimentopopolazione.istat.it/index.aspx?lang=en&SubSessionId=797833d6-f0cf-4f78-846a-6d502cbee74a&themetreeid=16">2011</a>
+                 and <a href="http://dati-censimentipermanenti.istat.it/?lang=en&SubSessionId=aa99f561-c6ec-4244-bb42-6ce2443efe16">2019</a>
+              </span>
+               - 
+              <span id="by-line">
+                Map by: Matteo Scannavini
+              </span>
+        </footer>
+    </body>
+    <script>
+        //https://github.com/openpolis/geojson-italy/blob/master/topojson/limits_IT_provinces.topo.json
+        const body = d3.select("#body")
+        const textBox = d3.select("#text-box")
+        const menu = d3.select("#menu")
+        const tooltip = d3.select("#tooltip")
+
+        Promise.all([ 
+            d3.json("provinces.topo.json"),
+            d3.csv("2011-2019 dwellings by occupancy status.csv")
+        ])
+        .then(showData);
+
+        function showData(dataSources){
+            const mapInfo = dataSources[0]
+            const data = dataSources[1]
+            
+            let provinces = topojson.feature(mapInfo, mapInfo.objects.provinces).features
+
+            const yearList = ["2011", "2019"]
+            const columns = ["2011 unoccupied conventional dwellings", "2019 unoccupied conventional dwellings" ]
+            const palette = ["#e6f5ec", "#006622"]
+            let allExtents=[]
+            let currentYear = ""
+
+            columns.map(c=>{
+                let arrayColumn = data.map(d=> +d[`${c}`])
+                allExtents = [...allExtents, ...d3.extent(arrayColumn)]
+            })
+
+            const extents = d3.extent(allExtents)
+
+            const projection = d3.geoMercator()
+                .scale(2400)  
+                .translate([-280, 2250])          
+
+            const path = d3.geoPath()
+                .projection(projection);
+            
+            const colorScale = d3.scaleLinear()
+                .domain(extents)
+                .range(palette)
+
+            const legend = d3.legendColor()
+                .scale(colorScale)
+                .cells(5)
+                .labelFormat(d3.format(".0f"))
+                .title("Empty houses")
+                .locale(d3.formatLocale)
+
+            body.append("g")
+                .attr("transform", "translate(375, 30)")
+                .call(legend)
+
+            provinces = provinces.map(d=>{  
+                for (let row of data){
+                    if (d.properties.prov_name === row.Territory){
+                        for (let k in row){
+                            if (columns.includes(k))
+                                d.properties[k] = +row[k]
+                            }
+                        }
+                    }
+                return d
+            })
+
+            let provincesShapes = body.selectAll("path")
+                .data(provinces)
+                .enter()
+                .append("path")
+                .attr("d", d=>path(d))
+                .attr("stroke", "#fff")
+                .attr("stroke-width", 0.5)
+                .attr("fill", d=>colorScale(d.properties["2011 unoccupied conventional dwellings"]))
+                .attr("cursor", "pointer")
+                .on("mouseenter", function(d) {
+                        this.style.stroke = "#000";
+                        this.style.strokeWidth = 1.5;
+                        showTooltip(
+                            [d.properties.prov_name, d.properties[currentYear+" unoccupied conventional dwellings"], " empty houses"], 
+                            [d3.event.clientX, d3.event.clientY]
+                )})
+                    .on("mousemouve", function(d) {
+                        showTooltip([d.properties.prov_name, d.properties[currentYear+" unoccupied conventional dwellings"]], [d3.event.clientX, d3.event.clientY])
+                    })
+                    .on("mouseleave", function(d) {
+                        this.style.stroke = "#fff";
+                        this.style.strokeWidth = 0.5;
+                        d3.select("#tooltip").style("display", "none").removeChild();
+                    })
+                    .on("click", d=>showTextInfo(d))       
+                
+            yearList.map(y =>{
+                menu.append("button")
+                    .attr("id", "btn"+y)
+                    .attr("class", "toggle-btns")
+                    .text(y)
+                    .on("click", ()=>changeMap(y, 1500))
+            })
+
+            function changeMap(year, interval){
+                provincesShapes 
+                    .transition()
+                    .ease(d3.easePoly)
+                    .duration(interval)
+                    .attr("fill", d => colorScale(d.properties[year +" unoccupied conventional dwellings"]))
+                    
+                d3.select("#btn"+yearList.find(y=>y!==year))
+                    .transition()
+                    .ease(d3.easePoly)
+                    .duration(interval)
+                    .style("opacity", 0.5)
+
+                d3.select("#btn"+year).transition()
+                    .ease(d3.easePoly)
+                    .duration(interval)
+                    .style("opacity", 1)
+
+                currentYear=year
+            }
+            
+            function showTooltip(text, coords){
+                tooltip.text(text[0]+": "+ text[1].toLocaleString('en-US')+text[2])
+                    .style("top", coords[1]+"px")
+                    .style("left", coords[0]+"px")
+                    .style("display", "block")
+
+            }
+
+            function showTextInfo(d){
+                const province=d.properties.prov_name;
+                const regione = d.properties.reg_name;
+                const value_11 = d.properties["2011 unoccupied conventional dwellings"]
+                const value_19 = d.properties["2019 unoccupied conventional dwellings"]
+                let change = parseFloat((value_19-value_11)/value_11*100).toFixed(1)
+                change >=0 ? change="+"+String(change)+"%" : change="-"+String(change)+"%"
+                textBox.text(`${province} recorded a ${change} of empty houses from 2011 to 2019`).style("visibility", "visible")
+            }
+
+            changeMap(yearList[1], 3000)
+        }
+
+    </script>
+</html>
