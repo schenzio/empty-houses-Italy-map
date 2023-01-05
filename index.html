@@ -241,7 +241,7 @@
                 const value_11 = d.properties["2011 unoccupied conventional dwellings"]
                 const value_19 = d.properties["2019 unoccupied conventional dwellings"]
                 let change = parseFloat((value_19-value_11)/value_11*100).toFixed(1)
-                change >=0 ? change="+"+String(change)+"%" : change="-"+String(change)+"%"
+                change >=0 ? change="+"+String(change)+"%" : change=String(change)+"%"
                 textBox.text(`${province} recorded a ${change} of empty houses from 2011 to 2019`).style("visibility", "visible")
             }
 
